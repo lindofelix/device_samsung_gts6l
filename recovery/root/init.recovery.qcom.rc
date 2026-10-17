@@ -1,0 +1,23 @@
+# Recovery init for Samsung gts6l (Qualcomm SM8150)
+# Adapted from the stock recovery's init.recovery.qcom.rc
+
+on init
+    setprop sys.usb.configfs 1
+
+# androidboot.usbcontroller=a600000.dwc3 is passed on the kernel cmdline
+on property:ro.boot.usbcontroller=*
+    setprop sys.usb.controller ${ro.boot.usbcontroller}
+    write /sys/class/udc/${ro.boot.usbcontroller}/device/../mode peripheral
+
+# fstab uses /dev/block/bootdevice/by-name/*
+on fs
+    wait /dev/block/platform/soc/${ro.boot.bootdevice}
+    symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
+
+# Mount pstore (kernel panic log, if the kernel's DTB reserves RAM for it -
+# not confirmed on this device). After a panic + reboot into recovery:
+#   adb shell ls /sys/fs/pstore
+#   adb pull /sys/fs/pstore/console-ramoops-0
+on fs
+    mkdir /sys/fs/pstore 0755 root root
+    mount pstore pstore /sys/fs/pstore

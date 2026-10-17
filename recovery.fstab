@@ -1,0 +1,27 @@
+# Mount point        FS      Device                                          Flags
+# Partition names taken from the stock recovery's /system/etc/recovery.fstab
+
+/boot                emmc    /dev/block/bootdevice/by-name/boot              flags=display="Boot";backup=1;flashimg=1
+/recovery            emmc    /dev/block/bootdevice/by-name/recovery          flags=display="Recovery";backup=1;flashimg=1
+/dtbo                emmc    /dev/block/bootdevice/by-name/dtbo              flags=display="DTBO";backup=1;flashimg=1
+
+# System-as-root, non-A/B, non-dynamic
+/system_root         ext4    /dev/block/bootdevice/by-name/system            flags=display="System";backup=1
+/vendor              ext4    /dev/block/bootdevice/by-name/vendor            flags=display="Vendor";backup=1
+/product             ext4    /dev/block/bootdevice/by-name/product           flags=display="Product";backup=1
+/cache               ext4    /dev/block/bootdevice/by-name/cache             flags=display="Cache";backup=0;wipeingui
+/carrier             ext4    /dev/block/bootdevice/by-name/carrier           flags=display="Carrier";backup=0
+
+# Userdata. fileencryption value must match /vendor/etc/fstab.qcom of the
+# device (adb shell cat /vendor/etc/fstab.qcom | grep userdata)
+/data                f2fs    /dev/block/bootdevice/by-name/userdata          flags=display="Data";fileencryption=ice;wipeingui;backup=1;wipeduringfactoryreset
+/data                ext4    /dev/block/bootdevice/by-name/userdata          flags=display="Data";fileencryption=ice;wipeingui;backup=1;wipeduringfactoryreset
+
+/efs                 ext4    /dev/block/bootdevice/by-name/sec_efs           flags=display="EFS";backup=1
+/modem               emmc    /dev/block/bootdevice/by-name/apnhlos           flags=display="Modem (apnhlos)";backup=1;flashimg=1
+/mdm                 emmc    /dev/block/bootdevice/by-name/modem             flags=display="Modem";backup=1;flashimg=1
+/misc                emmc    /dev/block/bootdevice/by-name/misc              flags=display="Misc";backup=0
+
+# External storage
+/external_sd         auto    /dev/block/mmcblk0p1    /dev/block/mmcblk0      flags=display="MicroSD";storage;wipeingui;removable
+/usb_otg             auto    /dev/block/sda1         /dev/block/sda          flags=display="USB-OTG";storage;wipeingui;removable

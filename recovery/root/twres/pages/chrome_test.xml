@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<!--
+  TEST BUILD #1 - gts6l landscape theme.
+  Replaces the real "main" page (which only contains redirect logic, no
+  visuals) with a plain screen that just shows the shared chrome: status bar
+  on top, floating nav panel + home/console/back icons on the bottom.
+  Nothing else is loaded in this build, so tapping the nav icons will not
+  go anywhere useful yet - that's expected for this round.
+-->
+<recovery>
+	<pages>
+		<page name="main">
+			<!-- Force style_battery at runtime: it's declared persist="1" in
+			     vars.xml, which may load from a saved/compiled-in default that
+			     ignores a plain <variable> override. This bypasses that. -->
+			<action>
+				<action function="set">style_battery=0</action>
+			</action>
+
+			<background color="%background%"/>
+			<template name="base_nav"/>
+
+			<text style="text_ab_title">
+				<placement x="%center_x%" y="%center_y%" placement="5"/>
+				<text>Landscape test build #2</text>
+			</text>
+
+			<button style="btn_raised">
+				<placement x="%center_x%" y="%test_btn_y%" placement="5"/>
+				<text>Ver pantalla de instalacion</text>
+				<action function="page">flash_confirm</action>
+			</button>
+
+			<button style="btn_raised">
+				<placement x="%center_x%" y="%test_btn2_y%" placement="5"/>
+				<text>Ver administrador de archivos</text>
+				<action function="page">filemanagerlist</action>
+			</button>
+		</page>
+	</pages>
+</recovery>
