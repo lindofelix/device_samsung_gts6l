@@ -1,0 +1,201 @@
+name: OrangeFox - Build
+
+# Basado en OrangeFox-Action-Builder. Creditos:
+# https://github.com/TeamWin  https://gitlab.com/OrangeFox
+# https://github.com/azwhikaru (plantilla original)
+#
+# VERSION "TODO EN UN REPO": este workflow vive DENTRO del repo del device tree
+# (.github/workflows/OrangeFox-Compile.yml). Compila usando los archivos de este mismo repo.
+#
+# Cambios respecto al original:
+#  - El device tree es el propio repo (no se clona otro)
+#  - Valores por defecto = Galaxy Tab S6 LTE (gts6l)
+#  - Comprueba el arbol antes de compilar (falla con un mensaje claro)
+#  - Sin "make clean" (el runner siempre empieza limpio)
+#  - Guarda el log de compilacion y lo sube como artefacto si algo falla
+#  - Genera un .tar para Odin (Samsung) y lo adjunta al Release
+#  - Inyecta un ui.xml landscape propio (si esta en el repo) para corregir
+#    "Could not find ui.xml for TW_THEME: landscape_hdpi"
+
+on:
+  workflow_dispatch:
+    inputs:
+      MANIFEST_BRANCH:
+        description: 'OrangeFox Manifest Branch'
+        required: true
+        default: '12.1'
+        type: choice
+        options:
+        - 12.1
+        - 11.0
+      DEVICE_PATH:
+        description: 'Specify your Device Path'
+        required: true
+        default: 'device/samsung/gts6l'
+      DEVICE_NAME:
+        description: 'Specify your Device Codename'
+        required: true
+        default: 'gts6l'
+      BUILD_TARGET:
+        description: 'Specify your Build Target'
+        required: true
+        default: 'recovery'
+        type: choice
+        options:
+        - recovery
+     
+
+jobs:
+  build:
+    name: Build OFR by ${{ github.actor }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FOX_DIR: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
+      OUT_DIR_DEVICE: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/out/target/product/${{ inputs.DEVICE_NAME }}
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Clean-up
+      uses: rokibhasansagar/slimhub_actions@main
+
+    - name: Swap Space
+      uses: pierotofy/set-swap-space@master
+      with:
+        swap-size-gb: 24
+
+    - name: Build Environment
+      run: |
+        sudo apt install aria2 -y
+        git clone https://gitlab.com/OrangeFox/misc/scripts.git -b master
+        cd scripts
+        sudo bash setup/android_build_env.sh
+
+    - name: Set-up Manifest
+      shell: bash
+      run: |
+        mkdir -p ${GITHUB_WORKSPACE}/OrangeFox
+        cd ${GITHUB_WORKSPACE}/OrangeFox
+        git config --global user.name "${{ github.actor }}"
+        git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+        git clone https://gitlab.com/OrangeFox/sync.git -b master
+        cd sync
+        ./orangefox_sync.sh --branch ${{ inputs.MANIFEST_BRANCH }} --path "${FOX_DIR}"
+        # El script puede terminar sin error aunque no haya descargado nada: lo comprobamos.
+        if [ ! -f "${FOX_DIR}/build/envsetup.sh" ]; then
+          echo "::error::La sincronizacion de OrangeFox ${{ inputs.MANIFEST_BRANCH }} fallo (no existe build/envsetup.sh). Revisa el log de este paso."
+          exit 1
+        fi
+
+    - name: Copy Device Tree from this repo
+      shell: bash
+      run: |
+        DEST="${FOX_DIR}/${{ inputs.DEVICE_PATH }}"
+        mkdir -p "${DEST}"
+        # Copia solo los archivos versionados de este repo (sin .git ni el directorio de trabajo)
+        git -C "${GITHUB_WORKSPACE}" archive --format=tar HEAD | tar -x -C "${DEST}" --exclude='.github'
+        echo "COMMIT_ID=$(git -C "${GITHUB_WORKSPACE}" rev-parse HEAD)" >> $GITHUB_ENV
+
+    - name: Add Santiago (Chile) to timezone picker
+      shell: bash
+      run: |
+        EN_XML="${FOX_DIR}/bootable/recovery/gui/theme/common/languages/en.xml"
+        if [ -f "$EN_XML" ]; then
+          # Chile alterna UTC-3 (verano, sep-abr) y UTC-4 (invierno, abr-sep).
+          # Se edita por la clave utcm3/utcm4, no por el texto actual (mas seguro).
+          sed -i -E 's|(<string name="utcm3">)[^<]*(</string>)|\1(UTC -3) Santiago, Chile (verano)\2|' "$EN_XML"
+          sed -i -E 's|(<string name="utcm4">)[^<]*(</string>)|\1(UTC -4) Santiago, Chile (invierno)\2|' "$EN_XML"
+          echo "Etiquetas actualizadas:"
+          grep -n "utcm3\|utcm4" "$EN_XML" || true
+        else
+          echo "::warning::No se encontro en.xml en la ruta esperada; se omite el cambio de zona horaria."
+        fi
+
+    - name: Verify Device Tree
+      shell: bash
+      run: |
+        cd "${FOX_DIR}/${{ inputs.DEVICE_PATH }}"
+        echo "Contenido del device tree:"; ls -la
+        ok=1
+        [ -f BoardConfig.mk ] || { echo "::error::Falta BoardConfig.mk en la raiz del device tree (esta dentro de una subcarpeta?)"; ok=0; }
+        [ -f AndroidProducts.mk ] || { echo "::error::Falta AndroidProducts.mk"; ok=0; }
+        [ -f "twrp_${{ inputs.DEVICE_NAME }}.mk" ] || { echo "::error::Falta twrp_${{ inputs.DEVICE_NAME }}.mk (el workflow hace: lunch twrp_${{ inputs.DEVICE_NAME }}-eng)"; ok=0; }
+        grep -q "PRODUCT_NAME := twrp_${{ inputs.DEVICE_NAME }}" "twrp_${{ inputs.DEVICE_NAME }}.mk" 2>/dev/null || { echo "::error::PRODUCT_NAME en twrp_${{ inputs.DEVICE_NAME }}.mk debe ser twrp_${{ inputs.DEVICE_NAME }}"; ok=0; }
+        if grep -rn "embedded.mk" --include=*.mk . ; then echo "::error::El tree hereda embedded.mk, que no existe en el minimal manifest"; ok=0; fi
+        [ "$ok" = 1 ] || exit 1
+
+
+    - name: Building OrangeFox
+      shell: bash
+      run: |
+        cd "${FOX_DIR}"
+        set +e
+        source build/envsetup.sh
+        export ALLOW_MISSING_DEPENDENCIES=true
+        export FOX_BUILD_DEVICE=${{ inputs.DEVICE_NAME }}
+        export LC_ALL="C"
+        export OF_DISABLE_MIUI_SPECIFIC_FEATURES=1
+        set -eo pipefail
+        { lunch twrp_${{ inputs.DEVICE_NAME }}-eng && mka adbd ${{ inputs.BUILD_TARGET }}image; } 2>&1 | tee "${GITHUB_WORKSPACE}/build.log"
+
+    - name: Package Release Files
+      shell: bash
+      run: |
+        mkdir -p "${GITHUB_WORKSPACE}/release"
+        cd "${OUT_DIR_DEVICE}"
+        ls -la
+        shopt -s nullglob
+        imgs=(OrangeFox*.img)
+        zips=(OrangeFox*.zip)
+        if [ ${#imgs[@]} -eq 0 ]; then
+          echo "::error::No se genero ningun OrangeFox*.img en ${OUT_DIR_DEVICE}"
+          exit 1
+        fi
+        cp "${imgs[@]}" "${zips[@]}" "${GITHUB_WORKSPACE}/release/" 2>/dev/null || true
+        # .tar para Odin (Samsung): el contenido debe llamarse como la particion
+        case "${{ inputs.BUILD_TARGET }}" in
+          recovery)   name=recovery.img ;;
+        esac
+        cp "${imgs[0]}" "${GITHUB_WORKSPACE}/release/${name}"
+        cd "${GITHUB_WORKSPACE}/release"
+        tar -H ustar -c "${name}" > "OrangeFox-${{ inputs.DEVICE_NAME }}-odin.tar"
+        rm -f "${name}"
+        ls -la "${GITHUB_WORKSPACE}/release"
+
+    - name: Set Release Properties
+      shell: bash
+      run: |
+        echo "BUILD_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
+        echo "DEVICE_TREE_URL=https://github.com/${{ github.repository }}" >> $GITHUB_ENV
+        echo "DEVICE_TREE_BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
+
+    - name: Upload to Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          release/*
+        fail_on_unmatched_files: true
+        name: OrangeFox Recovery for ${{ inputs.DEVICE_NAME }} // ${{ env.BUILD_DATE }}
+        tag_name: ${{ github.run_id }}
+        body: |
+          ## OrangeFox Recovery Build - Unofficial
+          Build: fox_${{ inputs.MANIFEST_BRANCH }}
+          Device: [Device Tree/Branch](${{ env.DEVICE_TREE_URL }}/tree/${{ env.DEVICE_TREE_BRANCH }})
+          Commit: Most recent [commit](${{ env.DEVICE_TREE_URL }}/commit/${{ env.COMMIT_ID }}) during building.
+
+          Archivos: `OrangeFox*.img` (imagen), `OrangeFox*.zip` (instalador, si se genero) y `*-odin.tar` (para flashear con Odin en AP).
+
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: |
+          build.log
+          OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/out/error.log
+          OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/out/verbose.log.gz
+        if-no-files-found: ignore
