@@ -1,0 +1,53 @@
+# Recovery init for Samsung gts6l (Qualcomm SM8150)
+# Adapted from the stock recovery's init.recovery.qcom.rc
+
+# Health HAL real de Samsung (ver HALLAZGO batería legacy). Pegado directo
+# aca en vez de un archivo aparte + import, porque no confirmamos que el
+# init de OrangeFox soporte "import" - este archivo si sabemos que se carga
+# (matchea ro.hardware=qcom).
+# El binario y sus 7 librerias (ver recovery/root/system/lib64 y
+# recovery/root/system/bin/hw) estan embebidos en el ramdisk, copiados a
+# mano desde /vendor y /system del equipo real - asi no depende de que
+# /vendor este montado en recovery (nunca se monta solo, ver mas abajo).
+service health-hal-2-1-samsung /system/bin/hw/android.hardware.health@2.1-service-samsung
+    class hal charger
+    user system
+    group system
+    capabilities WAKE_ALARM
+    file /dev/kmsg w
+    # Sin esto, init nunca sabe que ESTE proceso es el que atiende la
+    # interfaz: OrangeFox pide ctl.interface_start para 2.0 (visto en dmesg),
+    # asi que declaramos las dos versiones que puede pedir.
+    interface android.hardware.health@2.0::IHealth default
+    interface android.hardware.health@2.1::IHealth default
+
+on init
+    setprop sys.usb.configfs 1
+
+# androidboot.usbcontroller=a600000.dwc3 is passed on the kernel cmdline
+on property:ro.boot.usbcontroller=*
+    setprop sys.usb.controller ${ro.boot.usbcontroller}
+    write /sys/class/udc/${ro.boot.usbcontroller}/device/../mode peripheral
+
+# fstab uses /dev/block/bootdevice/by-name/*
+on fs
+    wait /dev/block/platform/soc/${ro.boot.bootdevice}
+    symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
+
+# Mount pstore (kernel panic log, if the kernel's DTB reserves RAM for it -
+# not confirmed on this device). After a panic + reboot into recovery:
+#   adb shell ls /sys/fs/pstore
+#   adb pull /sys/fs/pstore/console-ramoops-0
+on fs
+    mkdir /sys/fs/pstore 0755 root root
+    mount pstore pstore /sys/fs/pstore
+
+# El health-hal ya no necesita /vendor montado (binario + libs van
+# embebidos en el ramdisk, mas arriba). Dejamos igual el auto-mount de
+# /vendor por las dudas que algo mas lo necesite mas adelante - usa el
+# mismo comando de mount que vos ya confirmaste que funciona a mano por adb
+# ("adb shell mount /vendor"), en vez de que nosotros adivinemos el device
+# path y el tipo de filesystem a mano.
+on boot
+    exec - root root -- /system/bin/mount /vendor
+    start health-hal-2-1-samsung
