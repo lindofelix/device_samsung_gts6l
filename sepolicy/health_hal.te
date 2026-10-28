@@ -1,0 +1,8 @@
+# linker64 y el resto del sistema de archivos de este recovery quedan
+# etiquetados "rootfs" genericos (OrangeFox no graba contextos SELinux al
+# empaquetar el ramdisk), y el dominio "recovery" que usa todo lo demas ya
+# es permisivo por eso mismo. hal_health_default es un dominio real de AOSP,
+# no permisivo por defecto - sin esto, el denied a linker64 SI bloquea
+# (a diferencia del resto de los denied en modo "recovery", que solo
+# se registran) y el proceso muere con SIGSEGV apenas arranca.
+permissive hal_health_default;
