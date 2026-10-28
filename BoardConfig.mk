@@ -138,14 +138,14 @@ TARGET_RECOVERY_QCOM_RTC_FIX := true
 # EN PRUEBA: tratando de hacer andar el health HAL real en vez de este
 # fallback (ver recovery/root/system/{bin/hw,lib64} y sepolicy/private/).
 # Dejar en true hasta confirmar que el HAL real corre estable.
-TW_USE_LEGACY_BATTERY_SERVICES := true
+TW_USE_LEGACY_BATTERY_SERVICES := false
 
 # Etiqueta SELinux para el binario del Health HAL embebido a mano (sin esto,
 # init rechaza arrancarlo: "incorrect label or no domain transition").
-# BOARD_PLAT_PRIVATE_SEPOLICY_DIR (variable "moderna" de AOSP) no tuvo
-# efecto en este build de OrangeFox - probamos tambien la variable legacy
-# que suele usar TWRP, apuntando a una carpeta plana sin "private/".
-BOARD_PLAT_PRIVATE_SEPOLICY_DIR += device/samsung/gts6l/sepolicy/private
+# Confirmado: BOARD_SEPOLICY_DIRS (variable legacy de TWRP) es la que
+# aplica en este build - BOARD_PLAT_PRIVATE_SEPOLICY_DIR tambien se cargaba
+# (dio "Multiple same specifications" al tener las dos), asi que se saco
+# esa y se dejo solo esta.
 BOARD_SEPOLICY_DIRS += device/samsung/gts6l/sepolicy
 
 # (Samsung VID/PID, MTP via mtp.gs0)
