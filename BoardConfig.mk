@@ -142,7 +142,11 @@ TW_USE_LEGACY_BATTERY_SERVICES := true
 
 # Etiqueta SELinux para el binario del Health HAL embebido a mano (sin esto,
 # init rechaza arrancarlo: "incorrect label or no domain transition").
+# BOARD_PLAT_PRIVATE_SEPOLICY_DIR (variable "moderna" de AOSP) no tuvo
+# efecto en este build de OrangeFox - probamos tambien la variable legacy
+# que suele usar TWRP, apuntando a una carpeta plana sin "private/".
 BOARD_PLAT_PRIVATE_SEPOLICY_DIR += device/samsung/gts6l/sepolicy/private
+BOARD_SEPOLICY_DIRS += device/samsung/gts6l/sepolicy
 
 # (Samsung VID/PID, MTP via mtp.gs0)
 TW_EXCLUDE_DEFAULT_USB_INIT := true
