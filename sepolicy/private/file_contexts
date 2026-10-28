@@ -1,0 +1,6 @@
+# Etiqueta estandar hal_health_default_exec para el binario del Health HAL
+# de Samsung que se embebio a mano en recovery/root/system/bin/hw/ (ver
+# HALLAZGO bateria legacy). El dominio hal_health_default y su transicion
+# init_daemon_domain() ya vienen definidos en el sepolicy base de AOSP -
+# solo falta mapear la ruta de nuestro binario a ese tipo.
+/system/bin/hw/android\.hardware\.health@2\.1-service-samsung    u:object_r:hal_health_default_exec:s0
