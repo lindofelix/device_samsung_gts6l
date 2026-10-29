@@ -1,0 +1,240 @@
+name: OrangeFox - Build (self-hosted, incremental)
+
+# Hermano de OrangeFox-Compilee.yml, pensado para correr en TU runner self-hosted
+# (tu propia PC), donde el disco persiste entre corridas.
+#
+# Diferencia clave respecto a la version para runners de GitHub:
+#  - El arbol fuente de OrangeFox (FOX_DIR) y la ccache NO viven dentro del
+#    workspace del checkout (que se limpia cada corrida) sino en una ruta fija
+#    bajo $HOME, fuera del repo. Por eso sobreviven de una corrida a la otra.
+#  - El sync completo del manifest (~1h) SOLO corre la primera vez, o si
+#    marcas FORCE_RESYNC. Despues, cada corrida reutiliza el arbol existente:
+#    solo se copian los archivos del device tree (rapido) y se compila, y
+#    ninja/ccache hacen el resto, recompilando nada mas lo que cambio.
+#  - Sin pasos de limpieza/"Swap Space" propios de runners efimeros en la nube:
+#    es tu maquina, no se le toca el swap ni se le borra disco solo.
+#
+# IMPORTANTE (seguridad): un runner self-hosted ejecuta codigo en TU maquina.
+# Si este repo es publico, cualquiera con permiso de "Actions" podria disparar
+# este workflow. Esta en workflow_dispatch (manual, no en pull_request), pero
+# si el repo es publico conviene restringir quien puede ejecutar Actions en
+# Settings > Actions > General.
+
+on:
+  workflow_dispatch:
+    inputs:
+      MANIFEST_BRANCH:
+        description: 'OrangeFox Manifest Branch'
+        required: true
+        default: '12.1'
+        type: choice
+        options:
+        - 12.1
+        - 11.0
+      DEVICE_PATH:
+        description: 'Specify your Device Path'
+        required: true
+        default: 'device/samsung/gts6l'
+      DEVICE_NAME:
+        description: 'Specify your Device Codename'
+        required: true
+        default: 'gts6l'
+      BUILD_TARGET:
+        description: 'Specify your Build Target'
+        required: true
+        default: 'recovery'
+        type: choice
+        options:
+        - recovery
+        - boot
+        - vendorboot
+      FORCE_RESYNC:
+        description: 'Forzar re-sync completo del manifest (borra el arbol existente; tarda ~1h otra vez)'
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    name: Build OFR (self-hosted) by ${{ github.actor }}
+    runs-on: [self-hosted]
+    timeout-minutes: 180
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write
+    steps:
+    - name: Ensure git is available (necesario antes del checkout)
+      shell: bash
+      run: |
+        if ! command -v git >/dev/null 2>&1; then
+          sudo apt update
+          sudo apt install -y git
+        fi
+
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up persistent paths
+      shell: bash
+      run: |
+        BUILD_BASE="${HOME}/of-persistent-build"
+        mkdir -p "${BUILD_BASE}"
+        echo "BUILD_BASE=${BUILD_BASE}" >> $GITHUB_ENV
+        echo "FOX_DIR=${BUILD_BASE}/fox_${{ inputs.MANIFEST_BRANCH }}" >> $GITHUB_ENV
+        echo "OUT_DIR_DEVICE=${BUILD_BASE}/fox_${{ inputs.MANIFEST_BRANCH }}/out/target/product/${{ inputs.DEVICE_NAME }}" >> $GITHUB_ENV
+        echo "USE_CCACHE=1" >> $GITHUB_ENV
+        echo "CCACHE_DIR=${BUILD_BASE}/ccache" >> $GITHUB_ENV
+
+    - name: Build Environment (solo la primera vez)
+      shell: bash
+      run: |
+        MARKER="${BUILD_BASE}/.env_ready"
+        if [ -f "$MARKER" ]; then
+          echo "Entorno ya preparado en una corrida anterior, se omite."
+          exit 0
+        fi
+        sudo apt update
+        sudo apt install -y git curl aria2 ccache rsync
+        git clone https://gitlab.com/OrangeFox/misc/scripts.git -b master "${BUILD_BASE}/scripts"
+        cd "${BUILD_BASE}/scripts"
+        sudo bash setup/android_build_env.sh
+        touch "$MARKER"
+
+    - name: Set up ccache
+      shell: bash
+      run: |
+        mkdir -p "${CCACHE_DIR}"
+        ccache -M 30G
+
+    - name: Sync OrangeFox manifest (solo si falta, o si pediste FORCE_RESYNC)
+      shell: bash
+      run: |
+        if [ "${{ inputs.FORCE_RESYNC }}" = "true" ] && [ -d "${FOX_DIR}" ]; then
+          echo "FORCE_RESYNC activado: borrando arbol existente en ${FOX_DIR}"
+          rm -rf "${FOX_DIR}"
+        fi
+        if [ -f "${FOX_DIR}/build/envsetup.sh" ]; then
+          echo "Arbol fuente ya existe en ${FOX_DIR}, se reutiliza (sin re-sync)."
+          exit 0
+        fi
+        echo "No existe arbol fuente valido, sincronizando desde cero (puede tardar ~1h)..."
+        mkdir -p "${BUILD_BASE}"
+        cd "${BUILD_BASE}"
+        git config --global user.name "${{ github.actor }}"
+        git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+        rm -rf sync
+        git clone https://gitlab.com/OrangeFox/sync.git -b master
+        cd sync
+        ./orangefox_sync.sh --branch ${{ inputs.MANIFEST_BRANCH }} --path "${FOX_DIR}"
+        if [ ! -f "${FOX_DIR}/build/envsetup.sh" ]; then
+          echo "::error::La sincronizacion de OrangeFox ${{ inputs.MANIFEST_BRANCH }} fallo (no existe build/envsetup.sh). Revisa el log de este paso."
+          exit 1
+        fi
+
+    - name: Copy Device Tree from this repo
+      shell: bash
+      run: |
+        DEST="${FOX_DIR}/${{ inputs.DEVICE_PATH }}"
+        mkdir -p "${DEST}"
+        # Copia solo los archivos versionados de este repo (sin .git ni el directorio de trabajo)
+        git -C "${GITHUB_WORKSPACE}" archive --format=tar HEAD | tar -x -C "${DEST}" --exclude='.github'
+        echo "COMMIT_ID=$(git -C "${GITHUB_WORKSPACE}" rev-parse HEAD)" >> $GITHUB_ENV
+
+    - name: Add Santiago (Chile) to timezone picker
+      shell: bash
+      run: |
+        EN_XML="${FOX_DIR}/bootable/recovery/gui/theme/common/languages/en.xml"
+        if [ -f "$EN_XML" ]; then
+          sed -i -E 's|(<string name="utcm3">)[^<]*(</string>)|\1(UTC -3) Santiago, Chile (verano)\2|' "$EN_XML"
+          sed -i -E 's|(<string name="utcm4">)[^<]*(</string>)|\1(UTC -4) Santiago, Chile (invierno)\2|' "$EN_XML"
+          echo "Etiquetas actualizadas:"
+          grep -n "utcm3\|utcm4" "$EN_XML" || true
+        else
+          echo "::warning::No se encontro en.xml en la ruta esperada; se omite el cambio de zona horaria."
+        fi
+
+    - name: Verify Device Tree
+      shell: bash
+      run: |
+        cd "${FOX_DIR}/${{ inputs.DEVICE_PATH }}"
+        echo "Contenido del device tree:"; ls -la
+        ok=1
+        [ -f BoardConfig.mk ] || { echo "::error::Falta BoardConfig.mk en la raiz del device tree (esta dentro de una subcarpeta?)"; ok=0; }
+        [ -f AndroidProducts.mk ] || { echo "::error::Falta AndroidProducts.mk"; ok=0; }
+        [ -f "twrp_${{ inputs.DEVICE_NAME }}.mk" ] || { echo "::error::Falta twrp_${{ inputs.DEVICE_NAME }}.mk (el workflow hace: lunch twrp_${{ inputs.DEVICE_NAME }}-eng)"; ok=0; }
+        grep -q "PRODUCT_NAME := twrp_${{ inputs.DEVICE_NAME }}" "twrp_${{ inputs.DEVICE_NAME }}.mk" 2>/dev/null || { echo "::error::PRODUCT_NAME en twrp_${{ inputs.DEVICE_NAME }}.mk debe ser twrp_${{ inputs.DEVICE_NAME }}"; ok=0; }
+        if grep -rn "embedded.mk" --include=*.mk . ; then echo "::error::El tree hereda embedded.mk, que no existe en el minimal manifest"; ok=0; fi
+        [ "$ok" = 1 ] || exit 1
+
+    - name: Building OrangeFox
+      shell: bash
+      run: |
+        cd "${FOX_DIR}"
+        set +e
+        source build/envsetup.sh
+        export ALLOW_MISSING_DEPENDENCIES=true
+        export FOX_BUILD_DEVICE=${{ inputs.DEVICE_NAME }}
+        export LC_ALL="C"
+        export OF_DISABLE_MIUI_SPECIFIC_FEATURES=1
+        set -eo pipefail
+        { lunch twrp_${{ inputs.DEVICE_NAME }}-eng && mka adbd ${{ inputs.BUILD_TARGET }}image; } 2>&1 | tee "${GITHUB_WORKSPACE}/build.log"
+
+    - name: Package Release Files
+      shell: bash
+      run: |
+        mkdir -p "${GITHUB_WORKSPACE}/release"
+        cd "${OUT_DIR_DEVICE}"
+        ls -la
+        shopt -s nullglob
+        imgs=(OrangeFox*.img)
+        zips=(OrangeFox*.zip)
+        if [ ${#imgs[@]} -eq 0 ]; then
+          echo "::error::No se genero ningun OrangeFox*.img en ${OUT_DIR_DEVICE}"
+          exit 1
+        fi
+        cp "${imgs[@]}" "${zips[@]}" "${GITHUB_WORKSPACE}/release/" 2>/dev/null || true
+        case "${{ inputs.BUILD_TARGET }}" in
+          recovery)   name=recovery.img ;;
+          boot)       name=boot.img ;;
+          vendorboot) name=vendor_boot.img ;;
+        esac
+        cp "${imgs[0]}" "${GITHUB_WORKSPACE}/release/${name}"
+        cd "${GITHUB_WORKSPACE}/release"
+        tar -H ustar -c "${name}" > "OrangeFox-${{ inputs.DEVICE_NAME }}-odin.tar"
+        rm -f "${name}"
+        ls -la "${GITHUB_WORKSPACE}/release"
+
+    - name: Set Release Properties
+      shell: bash
+      run: |
+        echo "BUILD_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
+        echo "DEVICE_TREE_URL=https://github.com/${{ github.repository }}" >> $GITHUB_ENV
+        echo "DEVICE_TREE_BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
+
+    - name: Upload to Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          release/*
+        fail_on_unmatched_files: true
+        name: OrangeFox Recovery for ${{ inputs.DEVICE_NAME }} // ${{ env.BUILD_DATE }}
+        tag_name: ${{ github.run_id }}
+        body: |
+          ## OrangeFox Recovery Build - Unofficial (self-hosted runner)
+          Build: fox_${{ inputs.MANIFEST_BRANCH }}
+          Device: [Device Tree/Branch](${{ env.DEVICE_TREE_URL }}/tree/${{ env.DEVICE_TREE_BRANCH }})
+          Commit: Most recent [commit](${{ env.DEVICE_TREE_URL }}/commit/${{ env.COMMIT_ID }}) during building.
+
+          Archivos: `OrangeFox*.img` (imagen), `OrangeFox*.zip` (instalador, si se genero) y `*-odin.tar` (para flashear con Odin en AP).
+
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: |
+          build.log
+          ${{ env.FOX_DIR }}/out/error.log
+          ${{ env.FOX_DIR }}/out/verbose.log.gz
+        if-no-files-found: ignore
