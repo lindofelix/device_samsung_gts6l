@@ -34,6 +34,15 @@ on fs
     wait /dev/block/platform/soc/${ro.boot.bootdevice}
     symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
 
+# El binario del health-hal se copia al ramdisk por el rsync de
+# recovery/root/, que NO graba la etiqueta SELinux de sepolicy/file_contexts
+# (esa solo se aplica en el empaquetado normal de OrangeFox). La regla ya
+# esta compilada en la politica - restorecon la aplica ahora, a mano, en
+# tiempo de arranque, leyendo esa misma politica ya cargada.
+on fs
+    restorecon_recursive /system/bin/hw
+    restorecon_recursive /system/lib64
+
 # Mount pstore (kernel panic log, if the kernel's DTB reserves RAM for it -
 # not confirmed on this device). After a panic + reboot into recovery:
 #   adb shell ls /sys/fs/pstore
