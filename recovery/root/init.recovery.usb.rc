@@ -1,0 +1,95 @@
+# init.recovery.usb.rc - Samsung Galaxy Tab S6 LTE (gts6l / SM8150)
+#
+# MTP through FunctionFS (ffs.mtp), the same way the stock firmware does it.
+#
+# WHY: the device logs showed TWRP/OrangeFox falling back to the legacy MTP
+# path (/dev/usb_mtp_gadget + ioctls). Samsung's kernel driver rejects the
+# AOSP ioctls (MTP_SEND_FILE / MTP_RECEIVE_FILE / MTP_SEND_EVENT) with
+# "Inappropriate ioctl for device", so folders can be listed but no file can
+# be copied in either direction (Windows error 0x80004005).
+# Recoveries built with SDK >= 28 ship the FunctionFS MTP code; it is used
+# when sys.usb.mtp.device_type=3 and /dev/usb-ffs/mtp is mounted (this is the
+# AOSP/TWRP reference setup). Stock Samsung does the same mount
+# (init.qcom.usb.rc: mount functionfs mtp /dev/usb-ffs/mtp ...).
+#
+# The recovery's own init.rc handles "adb" (binds the UDC itself) but has NO
+# "none" handler, so "none" is defined here. "adb"/"sideload" only get the
+# Samsung VID/PID so both files do not fight over the UDC.
+#
+#   * UDC / controller : a600000.dwc3   (init.target.rc)
+#   * Samsung VID/PID  : 0x04E8 / 0x6860 (init.qcom.usb.rc)
+
+on init
+    # Legacy fallback node name (also TW_MTP_DEVICE in BoardConfig.mk)
+    symlink /dev/usb_mtp_gadget /dev/mtp_usb
+    # Tell the MTP server to use FunctionFS instead of the legacy device
+    setprop sys.usb.mtp.device_type 3
+
+on fs && property:sys.usb.configfs=1
+    mkdir /config/usb_gadget/g1/functions/ffs.mtp
+    mkdir /config/usb_gadget/g1/functions/ffs.adb
+    write /config/usb_gadget/g1/bcdUSB 0x0200
+    write /config/usb_gadget/g1/configs/b.1/MaxPower 900
+    mkdir /dev/usb-ffs 0775 shell shell
+    mkdir /dev/usb-ffs/mtp 0770 mtp mtp
+    mount functionfs mtp /dev/usb-ffs/mtp rmode=0770,fmode=0660,uid=1024,gid=1024,no_disconnect=1
+
+# Unbind and clean up (the recovery's init.rc does not do this)
+on property:sys.usb.config=none && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/UDC "none"
+    stop adbd
+    setprop sys.usb.ffs.ready 0
+    setprop sys.usb.ffs.mtp.ready 0
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+    rm /config/usb_gadget/g1/configs/b.1/f3
+    rm /config/usb_gadget/g1/configs/b.1/f4
+    write /config/usb_gadget/g1/bDeviceClass 0
+    write /config/usb_gadget/g1/bDeviceSubClass 0
+    write /config/usb_gadget/g1/bDeviceProtocol 0
+    setprop sys.usb.state ${sys.usb.config}
+
+# adb-only / sideload: only set the Samsung VID/PID (UDC is still unbound here);
+# the recovery's init.rc binds the gadget.
+on property:sys.usb.config=adb && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/idVendor 0x04E8
+    write /config/usb_gadget/g1/idProduct 0x6860
+
+on property:sys.usb.config=sideload && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/idVendor 0x04E8
+    write /config/usb_gadget/g1/idProduct 0x6860
+
+# MTP only
+on property:sys.usb.config=mtp && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "mtp"
+
+on property:sys.usb.ffs.mtp.ready=1 && property:sys.usb.config=mtp && property:sys.usb.configfs=1
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+    rm /config/usb_gadget/g1/configs/b.1/f3
+    rm /config/usb_gadget/g1/configs/b.1/f4
+    write /config/usb_gadget/g1/idVendor 0x04E8
+    write /config/usb_gadget/g1/idProduct 0x6860
+    symlink /config/usb_gadget/g1/functions/ffs.mtp /config/usb_gadget/g1/configs/b.1/f1
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+
+# MTP + adb (what TWRP/OrangeFox requests when MTP is enabled)
+on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1
+    start adbd
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "mtp,adb"
+
+on property:sys.usb.ffs.ready=1 && property:sys.usb.ffs.mtp.ready=1 && property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+    rm /config/usb_gadget/g1/configs/b.1/f3
+    rm /config/usb_gadget/g1/configs/b.1/f4
+    write /config/usb_gadget/g1/idVendor 0x04E8
+    write /config/usb_gadget/g1/idProduct 0x6860
+    symlink /config/usb_gadget/g1/functions/ffs.mtp /config/usb_gadget/g1/configs/b.1/f1
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f2
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+
+on property:init.svc.adbd=stopped
+    setprop sys.usb.ffs.ready 0
