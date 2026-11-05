@@ -61,12 +61,19 @@ on fs
     mkdir /sys/fs/pstore 0755 root root
     mount pstore pstore /sys/fs/pstore
 
+# "/system/bin/mount /vendor" (lo que habia antes) nunca funciono porque el
+# comando "mount" generico (toybox) necesita resolver el punto de montaje
+# contra un /etc/fstab tradicional, que este recovery no tiene (OrangeFox usa
+# su propio recovery.fstab, un formato distinto que solo entiende el binario
+# de recovery). El "mount" INTEGRADO de init no depende de ningun fstab: se
+# le da tipo + device + punto de montaje directo, y monta sin mas.
 # El health-hal ya no necesita /vendor montado (binario + libs van
-# embebidos en el ramdisk, mas arriba). Dejamos igual el auto-mount de
-# /vendor por las dudas que algo mas lo necesite mas adelante - usa el
-# mismo comando de mount que vos ya confirmaste que funciona a mano por adb
-# ("adb shell mount /vendor"), en vez de que nosotros adivinemos el device
-# path y el tipo de filesystem a mano.
+# embebidos en el ramdisk), pero lo dejamos por si algo mas lo necesita.
 on boot
-    exec - root root -- /system/bin/mount /vendor
+    wait /dev/block/bootdevice/by-name/system
+    mkdir /system_root 0755 root root
+    mount ext4 /dev/block/bootdevice/by-name/system /system_root
+    wait /dev/block/bootdevice/by-name/vendor
+    mkdir /vendor 0755 root root
+    mount ext4 /dev/block/bootdevice/by-name/vendor /vendor
     start health-hal-2-1-samsung
