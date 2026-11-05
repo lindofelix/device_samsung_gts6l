@@ -109,6 +109,12 @@
 				<condition var1="tw_busy" op="!=" var2="1"/>
 				<condition var1="tw_reboot_system" var2="1"/>
 				<placement x="1118" y="%pc_y%" />
+				<!-- El bootloader de Samsung escribe "boot-recovery" en el BCB
+				     (/dev/block/by-name/misc) al entrar a recovery por combo de
+				     teclas. OrangeFox nunca lo limpia al elegir "Reboot System",
+				     asi que el bootloader vuelve a leer esa orden vieja y hace
+				     loop de vuelta a recovery. Se limpia aca, antes de rebootear. -->
+				<action function="cmd">dd if=/dev/zero of=/dev/block/by-name/misc bs=512 count=64 &gt;/dev/null 2&gt;&amp;1</action>
 				<action function="set">tw_action_param=system</action>
 				<action function="page">rebootcheckoverlay</action>
 			</button>
