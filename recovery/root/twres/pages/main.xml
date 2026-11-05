@@ -8,6 +8,21 @@
 				<action function="need_reboot">%tw_reboot_param%</action>
 			</action>
 
+			<!-- Montar system_root y vendor automaticamente al arrancar.
+			     Un "mount" nuestro en init.rc (on boot) SI monta a nivel
+			     kernel, pero el propio proceso de OrangeFox al iniciar
+			     resetea/desmonta todo para arrancar en estado limpio -
+			     por eso nunca se veia montado. Se hace aca, con el mount
+			     propio de OrangeFox (el mismo que usa el menu Mount), una
+			     sola vez por boot (guard con fox_auto_mounted_boot) para
+			     no re-montar cada vez que se vuelve a esta pagina. -->
+			<action>
+				<condition var1="fox_auto_mounted_boot" op="!=" var2="1"/>
+				<action function="mount">/system_root</action>
+				<action function="mount">/vendor</action>
+				<action function="set">fox_auto_mounted_boot=1</action>
+			</action>
+
 			<!-- DEBUG -->
 			<action>
 <!--				<condition var1="fox_lab" var2="1"/>-->
