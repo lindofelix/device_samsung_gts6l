@@ -132,13 +132,6 @@ TW_HAS_DOWNLOAD_MODE := true
 TW_NO_REBOOT_BOOTLOADER := true
 TARGET_RECOVERY_QCOM_RTC_FIX := true
 
-# Battery: newer TWRP/OrangeFox read the level through the health HAL, which
-# reports a fixed 0 or 100 on this device even though
-# /sys/class/power_supply/battery/capacity is correct. Use the legacy sysfs read.
-# EN PRUEBA: tratando de hacer andar el health HAL real en vez de este
-# fallback (ver recovery/root/system/{bin/hw,lib64} y sepolicy/private/).
-# Dejar en true hasta confirmar que el HAL real corre estable.
-TW_USE_LEGACY_BATTERY_SERVICES := false
 
 # Etiqueta SELinux para el binario del Health HAL embebido a mano (sin esto,
 # init rechaza arrancarlo: "incorrect label or no domain transition").
