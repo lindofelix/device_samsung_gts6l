@@ -60,7 +60,7 @@
 
 			<!-- Right clock battery styles -->
 			<battery>
-				<placement x="%status_right_x%" y="%battery_y%" w="28" h="44"/>
+				<placement x="%status_right_x%" y="%battery_y%" w="22" h="44"/>
 				<condition var1="center_clock" var2="2"/>
 				<condition var1="style_battery" op="!=" var2="1"/>
 				<condition var1="style_battery" op="!=" var2="2"/>
@@ -78,7 +78,7 @@
 
 			<!-- Left clock battery styles -->
 			<battery>
-				<placement x="%battery_12_x%" y="%battery_y%" w="28" h="44"/>
+				<placement x="%battery_12_x%" y="%battery_y%" w="22" h="44"/>
 				<condition var1="center_clock" var2="0"/>
 				<condition var1="tw_military_time" op="!=" var2="1"/>
 				<condition var1="style_battery" op="!=" var2="1"/>
@@ -100,7 +100,7 @@
 
 			<!-- Left clock military time battery styles -->
 			<battery>
-				<placement x="%battery_24_x%" y="%battery_y%" w="28" h="44"/>
+				<placement x="%battery_24_x%" y="%battery_y%" w="22" h="44"/>
 				<condition var1="center_clock" var2="0"/>
 				<condition var1="tw_military_time" var2="1"/>
 				<condition var1="style_battery" op="!=" var2="1"/>
