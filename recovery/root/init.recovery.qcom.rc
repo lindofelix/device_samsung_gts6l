@@ -32,14 +32,15 @@ service health-hal-2-1-samsung /system/bin/hw/android.hardware.health@2.1-servic
 on init
     setprop sys.usb.configfs 1
 
-# El bootloader de Samsung escribe "boot-recovery" en el BCB (/misc) al entrar
-# a recovery por combo de teclas. Si nadie lo limpia, el proximo reboot a
-# system vuelve a leer esa orden vieja y hace loop de vuelta a recovery.
-# Enganchado aca (sys.powerctl, el mecanismo estandar de Android para
-# cualquier reboot) en vez de en un boton del tema, para que funcione sin
-# importar como se pida el reboot a system (GUI, adb reboot system, script).
+# DIAGNOSTICO del loop de reboot: marcas antes/despues del dd en /dev/kmsg,
+# para despues leerlas en /sys/fs/pstore/console-ramoops* (sobrevive al
+# reboot, loopee o no) y confirmar si este trigger llega a correr y en que
+# momento respecto al reboot real.
 on property:sys.powerctl=reboot,system
+    write /dev/kmsg "BCB-CLEAR-START"
     exec - root root -- /system/bin/dd if=/dev/zero of=/dev/block/by-name/misc bs=512 count=64
+    write /dev/kmsg "BCB-CLEAR-DONE"
+
 
 # androidboot.usbcontroller=a600000.dwc3 is passed on the kernel cmdline
 on property:ro.boot.usbcontroller=*
