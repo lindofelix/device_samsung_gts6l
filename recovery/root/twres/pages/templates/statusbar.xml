@@ -41,7 +41,7 @@
 			<!-- Battery -->
 			<!-- Center clock battery styles -->
 			<battery>
-				<placement x="%status_right_x%" y="%battery_y%" w="28" h="44"/>
+				<placement x="%status_right_x%" y="%battery_y%" w="22" h="44"/>
 				<condition var1="center_clock" var2="1"/>
 				<condition var1="style_battery" op="!=" var2="1"/>
 				<condition var1="style_battery" op="!=" var2="2"/>
@@ -53,7 +53,7 @@
 				<condition var1="style_battery" op="!=" var2="2"/>
 			</battery>
 			<battery style="battery_style_2">
-				<placement x="%status_right_x%" y="%battery_2_y%" w="56" h="32"/>
+				<placement x="%status_right_x%" y="%battery_2_y%" w="53" h="32"/>
 				<condition var1="center_clock" var2="1"/>
 				<condition var1="style_battery" var2="2"/>
 			</battery>
@@ -71,7 +71,7 @@
 				<condition var1="style_battery" var2="1"/>
 			</battery>
 			<battery style="battery_style_2">
-				<placement x="%status_right_x%" y="%battery_2_y%" w="56" h="32"/>
+				<placement x="%status_right_x%" y="%battery_2_y%" w="53" h="32"/>
 				<condition var1="center_clock" var2="2"/>
 				<condition var1="style_battery" var2="2"/>
 			</battery>
@@ -92,7 +92,7 @@
 				<condition var1="style_battery" var2="1"/>
 			</battery>
 			<battery style="battery_style_2">
-				<placement x="%battery_2_12_x%" y="%battery_2_y%" w="56" h="32"/>
+				<placement x="%battery_2_12_x%" y="%battery_2_y%" w="53" h="32"/>
 				<condition var1="center_clock" var2="0"/>
 				<condition var1="tw_military_time" op="!=" var2="1"/>
 				<condition var1="style_battery" var2="2"/>
@@ -113,7 +113,7 @@
 				<condition var1="style_battery" var2="1"/>
 			</battery>
 			<battery style="battery_style_2">
-				<placement x="%battery_2_24_x%" y="%battery_2_y%" w="56" h="32"/>
+				<placement x="%battery_2_24_x%" y="%battery_2_y%" w="53" h="32"/>
 				<condition var1="center_clock" var2="0"/>
 				<condition var1="tw_military_time" var2="1"/>
 				<condition var1="style_battery" var2="2"/>
