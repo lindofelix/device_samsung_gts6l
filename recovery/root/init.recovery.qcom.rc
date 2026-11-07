@@ -32,14 +32,6 @@ service health-hal-2-1-samsung /system/bin/hw/android.hardware.health@2.1-servic
 on init
     setprop sys.usb.configfs 1
 
-# DIAGNOSTICO del loop de reboot: marcas antes/despues del dd en /dev/kmsg,
-# para despues leerlas en /sys/fs/pstore/console-ramoops* (sobrevive al
-# reboot, loopee o no) y confirmar si este trigger llega a correr y en que
-# momento respecto al reboot real.
-on property:sys.powerctl=reboot,system
-    write /dev/kmsg "BCB-CLEAR-START"
-    exec - root root -- /system/bin/dd if=/dev/zero of=/dev/block/by-name/misc bs=512 count=64
-    write /dev/kmsg "BCB-CLEAR-DONE"
 
 
 # androidboot.usbcontroller=a600000.dwc3 is passed on the kernel cmdline
